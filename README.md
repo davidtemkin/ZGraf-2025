@@ -4,7 +4,7 @@ Modern web port of **Manic Episode**, a stereoscopic 3D tunnel shooter originall
 
 ## Play Online
 
-**[Play Now](https://davidtemkin.web.app/manic-episode/)**
+**[Play Now](https://davidtemkin.com/manic-episode/)**
 
 Requires red/cyan anaglyph 3D glasses for the full stereoscopic effect.
 
@@ -48,7 +48,7 @@ manic-episode/
 
 ## See Also
 
-- [ZGraf-1991](https://github.com/dtemkin/ZGraf-1991) - Original Macintosh source code
+- [ZGraf-1991](https://github.com/davidtemkin/ZGraf-1991) - Original Macintosh source code
 
 ## License
 
