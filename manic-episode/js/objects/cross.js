@@ -11,17 +11,17 @@ import { audio } from '../audio.js';
 
 // Cross shape: hash symbol (#) with 4 bars
 // Format: [left, top, right, bottom, shade]
-// Draw order: horizontals first, then verticals on top
+// Draw order: verticals first, then horizontals on top
 // Shades from original CrossClass.c: r1=zMed, r2=zLt1, r3=zDk1, r4=zDk2
 const CROSS_SHAPE = [
-    // r3: Upper horizontal (zDk1 = 0.4)
-    [-32, -16, 32, -3, 0.4],
-    // r4: Lower horizontal (zDk2 = 0.3)
-    [-32, 3, 32, 16, 0.3],
     // r1: Left vertical (zMed = 0.5)
     [-16, -32, -3, 32, 0.5],
     // r2: Right vertical (zLt1 = 0.6)
     [3, -32, 16, 32, 0.6],
+    // r3: Upper horizontal (zDk1 = 0.4)
+    [-32, -16, 32, -3, 0.4],
+    // r4: Lower horizontal (zDk2 = 0.3)
+    [-32, 3, 32, 16, 0.3],
 ];
 
 export class Cross extends Vis {
