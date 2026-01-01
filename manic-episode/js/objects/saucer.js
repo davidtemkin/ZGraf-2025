@@ -46,6 +46,10 @@ export class Saucer extends Vis {
         this.vy = 0;
         this.vz = 0;
 
+        // Max x/y velocity - set by Game.addSaucer() based on level
+        // Default to full speed (100 * SPEED_FACTOR)
+        this.maxXYSpeed = 100 * CONFIG.SPEED_FACTOR;
+
         // Shooting state (from original Saucer.c)
         this.fShotTimer = 0;
         this.fShotCount = 0;
@@ -107,6 +111,10 @@ export class Saucer extends Vis {
                 if (player.y < this.y) this.vy -= 1 * dtScale;
                 if (player.y > this.y) this.vy += 1 * dtScale;
             }
+
+            // Clamp x/y velocities to max (varies by level)
+            this.vx = Math.max(-this.maxXYSpeed, Math.min(this.maxXYSpeed, this.vx));
+            this.vy = Math.max(-this.maxXYSpeed, Math.min(this.maxXYSpeed, this.vy));
         }
 
         // Wrap Z position

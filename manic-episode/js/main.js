@@ -13,24 +13,6 @@ import { Game } from './game.js';
 import { audio } from './audio.js';
 import { Aphid } from './objects/aphid.js';
 
-// DEBUG: Set to true to enable stereo parameter tuning panel
-const DEBUG_STEREO_PANEL = true;
-
-// Depth mode configurations
-// Mode 1: Original - all objects pop out (no screen plane)
-// Mode 2: Extended - close objects in front, far objects behind
-// Mode 3: Exaggerated depth effect
-// Mode 4: Very exaggerated depth effect
-const DEPTH_MODES = [
-    { name: '1: Original (all pop-out)', screenPlaneZ: null, halfOffset: 70 },
-    { name: '2: Extended depth', screenPlaneZ: 5000, halfOffset: 70 },
-    { name: '3: Exaggerated', screenPlaneZ: 4000, halfOffset: 100 },
-    { name: '4: Very exaggerated', screenPlaneZ: 3000, halfOffset: 140 },
-    { name: '5: Extreme', screenPlaneZ: 2500, halfOffset: 180 },
-    { name: '6: Ultra', screenPlaneZ: 2000, halfOffset: 220 },
-    { name: '7: Maximum', screenPlaneZ: 1500, halfOffset: 280 }
-];
-
 // Game states
 const GameState = {
     LOADING: 'loading',
@@ -70,18 +52,10 @@ class ZGraf {
         // Intro animation state
         this.introZ = INTRO_Z_START;
 
-        // Depth mode - start with mode 4 (very exaggerated)
-        this.depthMode = 3;  // 0-indexed, so 3 = mode 4
-        this.applyDepthMode();
-
-        // Debug stereo panel state
-        if (DEBUG_STEREO_PANEL) {
-            // Start with tuned values (all pop-out mode)
-            this.stereoHalfOffset = 380;
-            this.stereoScreenPlaneZ = null;
-            this.stereoKeys = {};
-            this.applyStereoSettings();
-        }
+        // Apply stereo settings (tuned values, all pop-out mode)
+        CONFIG.STEREO.halfOffset = 380;
+        CONFIG.STEREO.screenPlaneZ = null;
+        this.renderer.halfOffset = 380;
 
         this.setupInput();
 
@@ -201,141 +175,6 @@ class ZGraf {
                 this.spawnAphidSwarm(100);
             }
         });
-
-        // Stereo panel key handling (global - works in any state)
-        // Uses , . for halfOffset and - = for screenPlaneZ to avoid conflicts
-        if (DEBUG_STEREO_PANEL) {
-            document.addEventListener('keydown', (e) => {
-                // , and . for halfOffset (close object separation)
-                if (e.key === ',' || e.key === '.') {
-                    this.stereoKeys[e.key] = true;
-                }
-                // - and = for screenPlaneZ (far object depth)
-                if (e.key === '-' || e.key === '=') {
-                    this.stereoKeys[e.key] = true;
-                }
-                // 'O' key resets to original 1991 values
-                if (e.key === 'o' || e.key === 'O') {
-                    this.stereoHalfOffset = 70;
-                    this.stereoScreenPlaneZ = null;
-                    this.applyStereoSettings();
-                }
-                // 'P' key resets to proportional original values
-                if (e.key === 'p' || e.key === 'P') {
-                    const gameViewWidth = this.renderer ? this.renderer.getGameViewWidth() : CONFIG.WIDTH;
-                    const scale = gameViewWidth / CONFIG.ORIGINAL.viewWidth;
-                    this.stereoHalfOffset = Math.round(70 * scale);
-                    this.stereoScreenPlaneZ = null;
-                    this.applyStereoSettings();
-                }
-                // 'D' key resets to build default (Mode 4)
-                if (e.key === 'd' || e.key === 'D') {
-                    this.stereoHalfOffset = 140;
-                    this.stereoScreenPlaneZ = 3000;
-                    this.applyStereoSettings();
-                }
-            });
-            document.addEventListener('keyup', (e) => {
-                if (e.key === ',' || e.key === '.' || e.key === '-' || e.key === '=') {
-                    this.stereoKeys[e.key] = false;
-                }
-            });
-        }
-    }
-
-    /**
-     * Apply current depth mode settings to CONFIG.STEREO
-     */
-    applyDepthMode() {
-        const mode = DEPTH_MODES[this.depthMode];
-        CONFIG.STEREO.screenPlaneZ = mode.screenPlaneZ;
-        CONFIG.STEREO.halfOffset = mode.halfOffset;
-        // Also update renderer's cached value
-        if (this.renderer) {
-            this.renderer.halfOffset = mode.halfOffset;
-        }
-        console.log(`Depth mode: ${mode.name}`);
-    }
-
-    /**
-     * Apply stereo panel settings to CONFIG.STEREO
-     */
-    applyStereoSettings() {
-        CONFIG.STEREO.screenPlaneZ = this.stereoScreenPlaneZ;
-        CONFIG.STEREO.halfOffset = this.stereoHalfOffset;
-        if (this.renderer) {
-            this.renderer.halfOffset = this.stereoHalfOffset;
-        }
-    }
-
-    /**
-     * Update stereo settings based on held keys
-     */
-    updateStereoPanel() {
-        if (!DEBUG_STEREO_PANEL) return;
-
-        const halfOffsetStep = 2;      // Change per frame when key held
-        const screenPlaneStep = 50;    // Change per frame when key held
-
-        // , and . : adjust halfOffset (close object separation)
-        if (this.stereoKeys[',']) {
-            this.stereoHalfOffset = Math.max(0, this.stereoHalfOffset - halfOffsetStep);
-            this.applyStereoSettings();
-        }
-        if (this.stereoKeys['.']) {
-            this.stereoHalfOffset = Math.min(500, this.stereoHalfOffset + halfOffsetStep);
-            this.applyStereoSettings();
-        }
-
-        // - and = : adjust screenPlaneZ (far object depth)
-        // = (plus) = larger screenPlaneZ = far objects recede more behind screen
-        // - (minus) = smaller screenPlaneZ = far objects come forward
-        // When at minimum (1000), pressing - switches to null (all pop-out mode)
-        if (this.stereoKeys['=']) {
-            if (this.stereoScreenPlaneZ === null) {
-                this.stereoScreenPlaneZ = 2000;  // Start at reasonable value
-            } else {
-                this.stereoScreenPlaneZ = Math.min(20000, this.stereoScreenPlaneZ + screenPlaneStep);
-            }
-            this.applyStereoSettings();
-        }
-        if (this.stereoKeys['-']) {
-            if (this.stereoScreenPlaneZ !== null) {
-                this.stereoScreenPlaneZ -= screenPlaneStep;
-                if (this.stereoScreenPlaneZ <= 1000) {
-                    this.stereoScreenPlaneZ = null;  // Switch to all pop-out mode
-                }
-            }
-            this.applyStereoSettings();
-        }
-    }
-
-    /**
-     * Get stereo panel data for display
-     */
-    getStereoPanelData() {
-        const gameViewWidth = this.renderer ? this.renderer.getGameViewWidth() : CONFIG.WIDTH;
-        const scale = gameViewWidth / CONFIG.ORIGINAL.viewWidth;
-
-        return {
-            current: {
-                halfOffset: this.stereoHalfOffset,
-                screenPlaneZ: this.stereoScreenPlaneZ
-            },
-            buildDefault: {
-                halfOffset: 140,
-                screenPlaneZ: 3000
-            },
-            original1991: {
-                halfOffset: 70,
-                screenPlaneZ: null
-            },
-            proportionalOriginal: {
-                halfOffset: Math.round(70 * scale),
-                screenPlaneZ: null
-            },
-            scale: scale.toFixed(2)
-        };
     }
 
     /**
@@ -560,12 +399,6 @@ class ZGraf {
 
         if (this.paused && this.state === GameState.PLAYING) {
             this.renderer.drawPauseOverlay();
-        }
-
-        // Debug stereo tuning panel
-        if (DEBUG_STEREO_PANEL) {
-            this.updateStereoPanel();
-            this.renderer.drawStereoPanel(this.getStereoPanelData());
         }
 
         this.renderer.endFrame();

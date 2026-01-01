@@ -124,11 +124,24 @@ export class Game {
             // Original -14000 → 65000 - 28000 = 37000
             this.addCross(-4000, 10000, 37000, 0, 0, 0);
 
+            // Add aphid swarms: 1 swarm per level (50 aphids each)
+            // (experimental - level 1 gets 1 swarm, level 2 gets 2, etc.)
+            for (let i = 0; i < levelNum; i++) {
+                this.addAphidSwarm(50);
+            }
+
         } else {
             // === LEVEL 2+ (from original Game.c) ===
 
             // Energy drains faster on higher levels
             this.energyDrainInterval = Math.max(20, 100 - 10 * (levelNum - 1));
+
+            // Saucer velocity scaling by level
+            // X/Y: interpolate from 0.5 (level 1) to 1.0 (level 6)
+            const saucerXYScale = Math.min(1.0, 0.5 + (levelNum - 1) * 0.1);
+            const saucerMaxXY = Math.round(100 * saucerXYScale);
+            // Z: interpolate from 0.5 (level 1) to 1.0 (level 3)
+            const saucerZScale = Math.min(1.0, 0.5 + (levelNum - 1) * 0.25);
 
             // Number of crosses/saucers: (level + 1) * 4
             const numAdding = (levelNum + 1) * 4;
@@ -147,16 +160,18 @@ export class Game {
                     );
                 } else {
                     // Saucer with random velocities
-                    // Saucer z velocity: 200-400, 50% chance negated
-                    let zVel = randInt(200, 400);
+                    // x/y velocity scaled by level, z velocity scaled by level (maxes at level 3)
+                    const zMin = Math.round(200 * saucerZScale);
+                    const zMax = Math.round(400 * saucerZScale);
+                    let zVel = randInt(zMin, zMax);
                     if (Math.random() > 0.5) zVel = -zVel;
 
                     this.addSaucer(
                         randFloat(left, right),
                         randFloat(top, bottom),
                         randFloat(0, length),
-                        randInt(-100, 100),
-                        randInt(-100, 100),
+                        randInt(-saucerMaxXY, saucerMaxXY),
+                        randInt(-saucerMaxXY, saucerMaxXY),
                         zVel
                     );
                 }
@@ -176,6 +191,12 @@ export class Game {
             const numAphids = 3 + Math.floor(levelNum / 3);
             for (let i = 1; i <= numAphids; i++) {
                 this.addAphid();
+            }
+
+            // Add aphid swarms: 1 swarm per level (50 aphids each)
+            // (experimental - level 2 gets 2 swarms, level 3 gets 3, etc.)
+            for (let i = 0; i < levelNum; i++) {
+                this.addAphidSwarm(50);
             }
         }
     }
@@ -198,6 +219,12 @@ export class Game {
         saucer.vx = vx * sf;
         saucer.vy = vy * sf;
         saucer.vz = vz * sf;
+
+        // Set max x/y speed based on level
+        // Interpolate from 0.5 (level 1) to 1.0 (level 6)
+        const saucerXYScale = Math.min(1.0, 0.5 + (this.level - 1) * 0.1);
+        saucer.maxXYSpeed = 100 * saucerXYScale * sf;
+
         this.tunnel.addObject(saucer);
         this.numLiveObjs++;
     }
@@ -233,6 +260,38 @@ export class Game {
         const blocker = new Blocker(x, y, z);
         this.tunnel.addObject(blocker);
         this.numLiveObjs++;
+    }
+
+    /**
+     * Spawn a swarm of aphids around a random center point
+     * @param {number} count - Number of aphids in the swarm
+     */
+    addAphidSwarm(count) {
+        const { left, right, top, bottom, length } = CONFIG.TUNNEL;
+
+        // Random center point for the swarm
+        const centerX = left + Math.random() * (right - left);
+        const centerY = top + Math.random() * (bottom - top);
+        const centerZ = Math.random() * length;
+
+        // Spread range for individual aphids
+        const spreadX = 4000;
+        const spreadY = 4000;
+        const spreadZ = 3000;
+
+        for (let i = 0; i < count; i++) {
+            const x = centerX + (Math.random() - 0.5) * 2 * spreadX;
+            const y = centerY + (Math.random() - 0.5) * 2 * spreadY;
+            const z = centerZ + (Math.random() - 0.5) * 2 * spreadZ;
+
+            // Clamp to tunnel bounds
+            const clampedX = Math.max(left, Math.min(right, x));
+            const clampedY = Math.max(top, Math.min(bottom, y));
+            const clampedZ = ((z % length) + length) % length;
+
+            const aphid = new Aphid(clampedX, clampedY, clampedZ);
+            this.tunnel.addObject(aphid);
+        }
     }
 
     // Called when an enemy is destroyed
