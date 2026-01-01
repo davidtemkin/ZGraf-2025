@@ -11,12 +11,10 @@ import { Tunnel } from './tunnel.js';
 import { Player } from './player.js';
 import { Game } from './game.js';
 import { audio } from './audio.js';
+import { Aphid } from './objects/aphid.js';
 
-// DEBUG: Set to true to enable color calibration mode
-const DEBUG_COLOR_CALIBRATION = false;
-
-// DEBUG: Set to true to enable depth mode switching UI
-const DEBUG_DEPTH_MODE = false;
+// DEBUG: Set to true to enable stereo parameter tuning panel
+const DEBUG_STEREO_PANEL = true;
 
 // Depth mode configurations
 // Mode 1: Original - all objects pop out (no screen plane)
@@ -76,11 +74,13 @@ class ZGraf {
         this.depthMode = 3;  // 0-indexed, so 3 = mode 4
         this.applyDepthMode();
 
-        // Debug color calibration state
-        if (DEBUG_COLOR_CALIBRATION) {
-            this.calibrationColor = { r: 255, g: 0, b: 0 };  // Start with pure red
-            this.calibrationKeys = {};  // Track held keys
-            this.calibrationRefIsCyan = false;  // Reference starts as red
+        // Debug stereo panel state
+        if (DEBUG_STEREO_PANEL) {
+            // Start with tuned values (all pop-out mode)
+            this.stereoHalfOffset = 380;
+            this.stereoScreenPlaneZ = null;
+            this.stereoKeys = {};
+            this.applyStereoSettings();
         }
 
         this.setupInput();
@@ -136,8 +136,15 @@ class ZGraf {
             }
         });
 
-        // Keyboard - only during gameplay
+        // Keyboard input
         document.addEventListener('keydown', (e) => {
+            // 'R' restarts game (works in any state except loading)
+            // From original Player.c: sets startNewGame flag
+            if ((e.key === 'r' || e.key === 'R') && this.state !== GameState.LOADING) {
+                this.restartGame();
+                return;
+            }
+
             // Only process gameplay keys when actually playing
             if (this.state !== GameState.PLAYING) return;
 
@@ -186,79 +193,53 @@ class ZGraf {
                     this.player.moveBackward = false;
                     break;
             }
+        });
 
-            // Debug color calibration key release
-            if (DEBUG_COLOR_CALIBRATION) {
-                // Use e.code for physical key (KeyR, KeyG, KeyB, etc.)
-                this.calibrationKeys[e.code] = false;
-                this.calibrationKeys['Shift'] = e.shiftKey;
+        // Shift+A: spawn aphid swarm (100 aphids around a random point)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'A' && e.shiftKey) {
+                this.spawnAphidSwarm(100);
             }
         });
 
-        // Debug color calibration - track key holds
-        if (DEBUG_COLOR_CALIBRATION) {
+        // Stereo panel key handling (global - works in any state)
+        // Uses , . for halfOffset and - = for screenPlaneZ to avoid conflicts
+        if (DEBUG_STEREO_PANEL) {
             document.addEventListener('keydown', (e) => {
-                // Use e.code for physical key (KeyR, KeyG, KeyB, etc.)
-                this.calibrationKeys[e.code] = true;
-                this.calibrationKeys['Shift'] = e.shiftKey;
-
-                // Toggle reference color with /
-                if (e.key === '/') {
-                    this.calibrationRefIsCyan = !this.calibrationRefIsCyan;
+                // , and . for halfOffset (close object separation)
+                if (e.key === ',' || e.key === '.') {
+                    this.stereoKeys[e.key] = true;
+                }
+                // - and = for screenPlaneZ (far object depth)
+                if (e.key === '-' || e.key === '=') {
+                    this.stereoKeys[e.key] = true;
+                }
+                // 'O' key resets to original 1991 values
+                if (e.key === 'o' || e.key === 'O') {
+                    this.stereoHalfOffset = 70;
+                    this.stereoScreenPlaneZ = null;
+                    this.applyStereoSettings();
+                }
+                // 'P' key resets to proportional original values
+                if (e.key === 'p' || e.key === 'P') {
+                    const gameViewWidth = this.renderer ? this.renderer.getGameViewWidth() : CONFIG.WIDTH;
+                    const scale = gameViewWidth / CONFIG.ORIGINAL.viewWidth;
+                    this.stereoHalfOffset = Math.round(70 * scale);
+                    this.stereoScreenPlaneZ = null;
+                    this.applyStereoSettings();
+                }
+                // 'D' key resets to build default (Mode 4)
+                if (e.key === 'd' || e.key === 'D') {
+                    this.stereoHalfOffset = 140;
+                    this.stereoScreenPlaneZ = 3000;
+                    this.applyStereoSettings();
                 }
             });
-        }
-
-        // Depth mode switching (global - works in any state)
-        if (DEBUG_DEPTH_MODE) {
-            document.addEventListener('keydown', (e) => {
-                if (e.key === '[') {
-                    // Previous depth mode
-                    this.depthMode = Math.max(0, this.depthMode - 1);
-                    this.applyDepthMode();
-                } else if (e.key === ']') {
-                    // Next depth mode
-                    this.depthMode = Math.min(DEPTH_MODES.length - 1, this.depthMode + 1);
-                    this.applyDepthMode();
+            document.addEventListener('keyup', (e) => {
+                if (e.key === ',' || e.key === '.' || e.key === '-' || e.key === '=') {
+                    this.stereoKeys[e.key] = false;
                 }
             });
-        }
-    }
-
-    /**
-     * Update calibration color based on held keys
-     */
-    updateCalibrationColor() {
-        if (!DEBUG_COLOR_CALIBRATION) return;
-
-        const step = 5;  // Color change per frame when key held
-        const c = this.calibrationColor;
-        const shift = this.calibrationKeys['Shift'];
-
-        // Brightness: -/_ decreases, =/+ increases (scales all)
-        if (this.calibrationKeys['Minus']) {
-            c.r = Math.max(0, c.r - step);
-            c.g = Math.max(0, c.g - step);
-            c.b = Math.max(0, c.b - step);
-        }
-        if (this.calibrationKeys['Equal']) {
-            c.r = Math.min(255, c.r + step);
-            c.g = Math.min(255, c.g + step);
-            c.b = Math.min(255, c.b + step);
-        }
-
-        // Individual channels: without shift = decrease, with shift = increase
-        if (this.calibrationKeys['KeyR']) {
-            if (shift) c.r = Math.min(255, c.r + step);
-            else c.r = Math.max(0, c.r - step);
-        }
-        if (this.calibrationKeys['KeyG']) {
-            if (shift) c.g = Math.min(255, c.g + step);
-            else c.g = Math.max(0, c.g - step);
-        }
-        if (this.calibrationKeys['KeyB']) {
-            if (shift) c.b = Math.min(255, c.b + step);
-            else c.b = Math.max(0, c.b - step);
         }
     }
 
@@ -277,10 +258,84 @@ class ZGraf {
     }
 
     /**
-     * Get current depth mode name for display
+     * Apply stereo panel settings to CONFIG.STEREO
      */
-    getDepthModeName() {
-        return DEPTH_MODES[this.depthMode].name;
+    applyStereoSettings() {
+        CONFIG.STEREO.screenPlaneZ = this.stereoScreenPlaneZ;
+        CONFIG.STEREO.halfOffset = this.stereoHalfOffset;
+        if (this.renderer) {
+            this.renderer.halfOffset = this.stereoHalfOffset;
+        }
+    }
+
+    /**
+     * Update stereo settings based on held keys
+     */
+    updateStereoPanel() {
+        if (!DEBUG_STEREO_PANEL) return;
+
+        const halfOffsetStep = 2;      // Change per frame when key held
+        const screenPlaneStep = 50;    // Change per frame when key held
+
+        // , and . : adjust halfOffset (close object separation)
+        if (this.stereoKeys[',']) {
+            this.stereoHalfOffset = Math.max(0, this.stereoHalfOffset - halfOffsetStep);
+            this.applyStereoSettings();
+        }
+        if (this.stereoKeys['.']) {
+            this.stereoHalfOffset = Math.min(500, this.stereoHalfOffset + halfOffsetStep);
+            this.applyStereoSettings();
+        }
+
+        // - and = : adjust screenPlaneZ (far object depth)
+        // = (plus) = larger screenPlaneZ = far objects recede more behind screen
+        // - (minus) = smaller screenPlaneZ = far objects come forward
+        // When at minimum (1000), pressing - switches to null (all pop-out mode)
+        if (this.stereoKeys['=']) {
+            if (this.stereoScreenPlaneZ === null) {
+                this.stereoScreenPlaneZ = 2000;  // Start at reasonable value
+            } else {
+                this.stereoScreenPlaneZ = Math.min(20000, this.stereoScreenPlaneZ + screenPlaneStep);
+            }
+            this.applyStereoSettings();
+        }
+        if (this.stereoKeys['-']) {
+            if (this.stereoScreenPlaneZ !== null) {
+                this.stereoScreenPlaneZ -= screenPlaneStep;
+                if (this.stereoScreenPlaneZ <= 1000) {
+                    this.stereoScreenPlaneZ = null;  // Switch to all pop-out mode
+                }
+            }
+            this.applyStereoSettings();
+        }
+    }
+
+    /**
+     * Get stereo panel data for display
+     */
+    getStereoPanelData() {
+        const gameViewWidth = this.renderer ? this.renderer.getGameViewWidth() : CONFIG.WIDTH;
+        const scale = gameViewWidth / CONFIG.ORIGINAL.viewWidth;
+
+        return {
+            current: {
+                halfOffset: this.stereoHalfOffset,
+                screenPlaneZ: this.stereoScreenPlaneZ
+            },
+            buildDefault: {
+                halfOffset: 140,
+                screenPlaneZ: 3000
+            },
+            original1991: {
+                halfOffset: 70,
+                screenPlaneZ: null
+            },
+            proportionalOriginal: {
+                halfOffset: Math.round(70 * scale),
+                screenPlaneZ: null
+            },
+            scale: scale.toFixed(2)
+        };
     }
 
     /**
@@ -383,6 +438,56 @@ class ZGraf {
         this.canvas.style.cursor = 'none';  // Hide cursor during gameplay
     }
 
+    /**
+     * Restart game (from original Player.c 'R' key handler)
+     * Resets score, energy, velocity and starts level 1
+     */
+    restartGame() {
+        // From original Game.c lines 220-225:
+        // var(score) = 0;
+        // var(energy) = kMaxEnergy;
+        // objVar(thePlayer, zVel) = 0;
+        // (method(StartLevel), 1);
+        this.player.reset();
+        this.state = GameState.PLAYING;
+        this.paused = false;
+        this.game.startLevel(1);
+        this.canvas.style.cursor = 'none';
+    }
+
+    /**
+     * Debug: spawn a swarm of aphids around a random point
+     */
+    spawnAphidSwarm(count) {
+        const { left, right, top, bottom, length } = CONFIG.TUNNEL;
+
+        // Random center point for the swarm
+        const centerX = left + Math.random() * (right - left);
+        const centerY = top + Math.random() * (bottom - top);
+        const centerZ = Math.random() * length;
+
+        // Spread range for individual aphids (moderate distances)
+        const spreadX = 4000;
+        const spreadY = 4000;
+        const spreadZ = 3000;
+
+        for (let i = 0; i < count; i++) {
+            const x = centerX + (Math.random() - 0.5) * 2 * spreadX;
+            const y = centerY + (Math.random() - 0.5) * 2 * spreadY;
+            const z = centerZ + (Math.random() - 0.5) * 2 * spreadZ;
+
+            // Clamp to tunnel bounds
+            const clampedX = Math.max(left, Math.min(right, x));
+            const clampedY = Math.max(top, Math.min(bottom, y));
+            const clampedZ = ((z % length) + length) % length;
+
+            const aphid = new Aphid(clampedX, clampedY, clampedZ);
+            this.tunnel.addObject(aphid);
+        }
+
+        console.log(`Spawned ${count} aphids around (${Math.round(centerX)}, ${Math.round(centerY)}, ${Math.round(centerZ)})`);
+    }
+
     setPaused(paused) {
         this.paused = paused;
         // Show cursor when paused, hide when playing
@@ -431,11 +536,18 @@ class ZGraf {
 
         // Render (always)
         this.renderer.beginFrame();
-        this.tunnel.drawObjects(this.renderer);
 
-        // Draw crosshairs in center (amber, static) - only during gameplay
-        if (this.state === GameState.PLAYING) {
-            this.renderer.drawCrosshairs();
+        // If player was hit, draw full-screen flash instead of objects (from original Anim.c)
+        if (this.player.wasHit) {
+            this.renderer.drawHitFlash();
+            this.player.wasHit = false;
+        } else {
+            this.tunnel.drawObjects(this.renderer);
+
+            // Draw crosshairs in center (amber, static) - only during gameplay
+            if (this.state === GameState.PLAYING) {
+                this.renderer.drawCrosshairs();
+            }
         }
 
         // End game view clipping before drawing UI elements
@@ -450,15 +562,10 @@ class ZGraf {
             this.renderer.drawPauseOverlay();
         }
 
-        // Debug color calibration overlay
-        if (DEBUG_COLOR_CALIBRATION) {
-            this.updateCalibrationColor();
-            this.renderer.drawCalibrationOverlay(this.calibrationColor, this.calibrationRefIsCyan);
-        }
-
-        // Depth mode indicator (debug only)
-        if (DEBUG_DEPTH_MODE) {
-            this.renderer.drawDepthModeIndicator(this.getDepthModeName());
+        // Debug stereo tuning panel
+        if (DEBUG_STEREO_PANEL) {
+            this.updateStereoPanel();
+            this.renderer.drawStereoPanel(this.getStereoPanelData());
         }
 
         this.renderer.endFrame();

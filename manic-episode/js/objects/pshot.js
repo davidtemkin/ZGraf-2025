@@ -16,6 +16,9 @@ const PSHOT_SHAPE = [
     [-12, -12, 12, 12, true, 10],  // Solid 24x24 square, shade 10 (white)
 ];
 
+// From original PShot.c: shot not drawn until 800 units from player
+const START_DIST = 800;
+
 export class PShot extends Vis {
     constructor(x, y, z) {
         super(x, y, z);
@@ -50,6 +53,14 @@ export class PShot extends Vis {
     }
 
     draw(renderer) {
+        // From original PShot.c: don't draw if too close to player
+        // if (!(var(zFromPlayer) >= 0 && var(zFromPlayer) < classVar(startDist)))
+        //     (inherited(Draw));
+        const zFromPlayer = this.getZFromPlayer(this.tunnel?.player?.z || 0);
+        if (zFromPlayer >= 0 && zFromPlayer < START_DIST) {
+            return;  // Too close, don't draw yet
+        }
+
         const s = this.shapeScale;
 
         // Draw authentic PShot shape from zOBJ 129

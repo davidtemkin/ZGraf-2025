@@ -364,6 +364,31 @@ export class Renderer {
     }
 
     /**
+     * Draw hit flash - fills entire game view with bright shade for one frame
+     * From original Anim.c: DITHERSHADE(27); ZFillRect(&viewRect);
+     * Shade 27 is a medium-bright value (~0.85 intensity)
+     * Uses same cyan/red colors as rest of game
+     */
+    drawHitFlash() {
+        const gameViewWidth = this.getGameViewWidth();
+        const shade = 0.85;  // Shade 27 out of ~32 levels
+
+        // Use same color scheme as rest of game, scaled by shade
+        const { g, b } = CONFIG.STEREO.leftColorValues;
+        const { r } = CONFIG.STEREO.rightColorValues;
+
+        const contexts = this.stereoEnabled
+            ? [{ ctx: this.leftCtx, color: `rgb(0, ${Math.floor(g * shade)}, ${Math.floor(b * shade)})` },
+               { ctx: this.rightCtx, color: `rgb(${Math.floor(r * shade)}, 0, 0)` }]
+            : [{ ctx: this.leftCtx, color: `rgb(${Math.floor(255 * shade)}, ${Math.floor(255 * shade)}, ${Math.floor(255 * shade)})` }];
+
+        for (const { ctx, color } of contexts) {
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, gameViewWidth, this.height);
+        }
+    }
+
+    /**
      * Draw the intro zoom grid (from original Anim.c BenchmarkSystem)
      * 10x10 grid of white squares that zoom toward the viewer
      * @param {number} zDistance - Z distance for the grid (982 down to 2)
@@ -606,8 +631,7 @@ export class Renderer {
         const armEnd = Math.round(6 * scale);     // Inner edge (gap starts)
         const gapStart = Math.round(5 * scale);   // Other side of gap
 
-        // Stereo offset for crosshairs - fixed pixel offset to appear very close to player
-        // ~30-35px total separation matches closest visible objects
+        // Stereo offset for crosshairs - fixed pixel offset
         const stereoOffset = this.stereoEnabled ? 15 : 0;
 
         // For stereo mode, use anaglyph colors from config
@@ -1003,110 +1027,84 @@ export class Renderer {
     }
 
     /**
-     * Draw color calibration overlay for debugging anaglyph colors
-     * Shows two squares side by side: reference (red or cyan) and adjustable color
+     * Draw stereo parameter tuning panel
      */
-    drawCalibrationOverlay(color, refIsCyan = false) {
-        const { r, g, b } = color;
-        const colorStr = `rgb(${r}, ${g}, ${b})`;
-        const referenceColor = refIsCyan ? CONFIG.STEREO.leftColor : CONFIG.STEREO.rightColor;
-        const refLabel = refIsCyan ? 'Cyan Ref' : 'Red Ref';
-
-        // Two squares side by side
-        const squareSize = 200;
-        const gap = 30;
-        const x1 = 50;  // Reference square
-        const x2 = x1 + squareSize + gap;  // Calibration square
-        const y = this.centerY - squareSize / 2;
-
-        // Draw to both canvases so it appears on final output
-        const contexts = this.stereoEnabled ? [this.leftCtx, this.rightCtx] : [this.leftCtx];
-
-        for (const ctx of contexts) {
-            // Draw reference red square (left)
-            ctx.fillStyle = referenceColor;
-            ctx.fillRect(x1, y, squareSize, squareSize);
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x1, y, squareSize, squareSize);
-
-            // Draw calibration square (right)
-            ctx.fillStyle = colorStr;
-            ctx.fillRect(x2, y, squareSize, squareSize);
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x2, y, squareSize, squareSize);
-
-            // Labels above squares
-            ctx.font = '14px Silkscreen, monospace';
-            ctx.fillStyle = '#fff';
-            ctx.textAlign = 'center';
-            ctx.fillText(refLabel, x1 + squareSize / 2, y - 10);
-            ctx.fillText('Calibration', x2 + squareSize / 2, y - 10);
-
-            // RGB text below the squares
-            ctx.font = '16px Silkscreen, monospace';
-            ctx.textAlign = 'left';
-            ctx.fillText(referenceColor, x1, y + squareSize + 25);
-            ctx.fillText(colorStr, x2, y + squareSize + 25);
-
-            // Draw instructions
-            ctx.font = '12px Silkscreen, monospace';
-            ctx.fillStyle = '#888';
-            ctx.fillText('r/R: red  g/G: green  b/B: blue  -/+: all  /: toggle ref', x1, y + squareSize + 50);
-
-            // Static reference squares below (fixed red and cyan from config)
-            const y2 = y + squareSize + 80;
-
-            // Static red square (left)
-            ctx.fillStyle = CONFIG.STEREO.rightColor;
-            ctx.fillRect(x1, y2, squareSize, squareSize);
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x1, y2, squareSize, squareSize);
-
-            // Static cyan square (right)
-            ctx.fillStyle = CONFIG.STEREO.leftColor;
-            ctx.fillRect(x2, y2, squareSize, squareSize);
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x2, y2, squareSize, squareSize);
-
-            // Labels for static squares
-            ctx.font = '14px Silkscreen, monospace';
-            ctx.fillStyle = '#888';
-            ctx.textAlign = 'center';
-            ctx.fillText('Red (fixed)', x1 + squareSize / 2, y2 + squareSize + 20);
-            ctx.fillText('Cyan (fixed)', x2 + squareSize / 2, y2 + squareSize + 20);
-        }
-    }
-
-    /**
-     * Draw depth mode indicator in top-left corner
-     */
-    drawDepthModeIndicator(modeName) {
+    drawStereoPanel(data) {
+        const panelWidth = 340;
+        const panelHeight = 200;
         const x = 20;
-        const y = 30;
+        const y = 20;
+        const lineHeight = 18;
 
         // Draw to both canvases in stereo mode
         const contexts = this.stereoEnabled ? [this.leftCtx, this.rightCtx] : [this.leftCtx];
 
         for (const ctx of contexts) {
             // Semi-transparent background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(x - 10, y - 20, 280, 50);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.fillRect(x, y, panelWidth, panelHeight);
 
-            // Mode text
-            ctx.font = '14px Silkscreen, monospace';
+            // Border
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, panelWidth, panelHeight);
+
+            // Title
+            ctx.font = 'bold 14px Silkscreen, monospace';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            ctx.fillText(`Depth: ${modeName}`, x, y - 10);
+            ctx.fillText('STEREO TUNING', x + 10, y + 10);
 
-            // Instructions
-            ctx.font = '10px Silkscreen, monospace';
+            // Current values (adjustable)
+            ctx.font = '12px Silkscreen, monospace';
+            ctx.fillStyle = '#0f0';
+            const screenPlaneStr = data.current.screenPlaneZ === null ? 'null (all pop-out)' : data.current.screenPlaneZ;
+            ctx.fillText(`Current:`, x + 10, y + 35);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`halfOffset=${data.current.halfOffset}  screenPlaneZ=${screenPlaneStr}`, x + 80, y + 35);
+
+            // Separator
+            ctx.strokeStyle = '#444';
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 55);
+            ctx.lineTo(x + panelWidth - 10, y + 55);
+            ctx.stroke();
+
+            // Reference: Build default
+            ctx.font = '11px Silkscreen, monospace';
             ctx.fillStyle = '#888';
-            ctx.fillText('[ / ] to change mode', x, y + 10);
+            ctx.fillText(`Build default:`, x + 10, y + 65);
+            ctx.fillStyle = '#666';
+            ctx.fillText(`halfOffset=${data.buildDefault.halfOffset}  screenPlaneZ=${data.buildDefault.screenPlaneZ}`, x + 120, y + 65);
+
+            // Reference: Original 1991
+            ctx.fillStyle = '#888';
+            ctx.fillText(`Original 1991:`, x + 10, y + 65 + lineHeight);
+            ctx.fillStyle = '#666';
+            ctx.fillText(`halfOffset=${data.original1991.halfOffset}  screenPlaneZ=null`, x + 120, y + 65 + lineHeight);
+
+            // Reference: Proportional original
+            ctx.fillStyle = '#888';
+            ctx.fillText(`Proportional:`, x + 10, y + 65 + lineHeight * 2);
+            ctx.fillStyle = '#666';
+            ctx.fillText(`halfOffset=${data.proportionalOriginal.halfOffset}  (scale=${data.scale}x)`, x + 120, y + 65 + lineHeight * 2);
+
+            // Separator
+            ctx.strokeStyle = '#444';
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 125);
+            ctx.lineTo(x + panelWidth - 10, y + 125);
+            ctx.stroke();
+
+            // Controls
+            ctx.font = '10px Silkscreen, monospace';
+            ctx.fillStyle = '#aaa';
+            ctx.fillText(', / . : close object separation', x + 10, y + 135);
+            ctx.fillText('- / = : far object depth', x + 10, y + 150);
+            ctx.fillText('O=Original  P=Proportional  D=Default', x + 10, y + 165);
+            ctx.fillStyle = '#666';
+            ctx.fillText('(hold keys for continuous adjust)', x + 10, y + 180);
         }
     }
 

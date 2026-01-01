@@ -40,9 +40,8 @@ export class Player extends Vis {
         this.shots = [];
         this.lastShotTime = 0;
 
-        // Damage flash (from original: wasHit flag)
+        // Damage flash (from original: wasHit flag triggers single-frame flash)
         this.wasHit = false;
-        this.hitFlashTime = 0;
 
         // Don't form/explode player
         this.isForming = false;
@@ -111,13 +110,7 @@ export class Player extends Vis {
             }
         }
 
-        // Hit flash decay
-        if (this.wasHit) {
-            this.hitFlashTime -= dt;
-            if (this.hitFlashTime <= 0) {
-                this.wasHit = false;
-            }
-        }
+        // wasHit is reset by main.js after drawing the flash frame
     }
 
     fire() {
@@ -161,7 +154,6 @@ export class Player extends Vis {
     takeDamage(amount) {
         this.energy -= amount;
         this.wasHit = true;
-        this.hitFlashTime = 100; // Flash for 100ms
         audio.play('playerHit');
 
         if (this.energy < 0) {
