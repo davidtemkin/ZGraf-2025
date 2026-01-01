@@ -23,11 +23,11 @@ const GameState = {
 };
 
 // Intro animation constants (from original Anim.c BenchmarkSystem)
-// At 60fps with step=10, 450 units = 0.75 seconds (45 frames)
-// Start at 500, end at 50 = 450 units
-const INTRO_Z_START = 500;    // Start very close so immediately visible
-const INTRO_Z_END = 50;       // End much closer to user
-const INTRO_Z_STEP = 10;      // Decrement per frame
+// Scaled 10x in world space to use normal stereo halfOffset (380) without extreme separation
+// At 60fps with step=100, 4500 units = 0.75 seconds (45 frames)
+const INTRO_Z_START = 5000;   // Start far (reasonable stereo separation)
+const INTRO_Z_END = 500;      // End closer but still reasonable
+const INTRO_Z_STEP = 100;     // Decrement per frame (10x original)
 
 class ZGraf {
     constructor() {
@@ -323,8 +323,6 @@ class ZGraf {
             const aphid = new Aphid(clampedX, clampedY, clampedZ);
             this.tunnel.addObject(aphid);
         }
-
-        console.log(`Spawned ${count} aphids around (${Math.round(centerX)}, ${Math.round(centerY)}, ${Math.round(centerZ)})`);
     }
 
     setPaused(paused) {
@@ -381,12 +379,13 @@ class ZGraf {
             this.renderer.drawHitFlash();
             this.player.wasHit = false;
         } else {
-            this.tunnel.drawObjects(this.renderer);
-
-            // Draw crosshairs in center (amber, static) - only during gameplay
-            if (this.state === GameState.PLAYING) {
-                this.renderer.drawCrosshairs();
-            }
+            // Draw objects with crosshairs at their logical Z depth (only during gameplay)
+            // Crosshairs are inserted into the depth-sorted rendering so closer objects occlude them
+            const crosshairsOptions = this.state === GameState.PLAYING ? {
+                crosshairsZ: this.renderer.getCrosshairsZ(),
+                drawCrosshairs: () => this.renderer.drawCrosshairs()
+            } : {};
+            this.tunnel.drawObjects(this.renderer, crosshairsOptions);
         }
 
         // End game view clipping before drawing UI elements

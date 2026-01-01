@@ -37,6 +37,10 @@ export class Renderer {
         this.stereoEnabled = CONFIG.STEREO.enabled;
         this.halfOffset = CONFIG.STEREO.halfOffset;
 
+        // Crosshairs stereo offset in pixels (fixed, not Z-dependent)
+        // Changing this will change the apparent depth of crosshairs
+        this.crosshairsStereoOffset = 15;
+
         // Track all images loaded for loading screen
         this.allImagesLoaded = false;
         this.imagesLoaded = 0;
@@ -391,7 +395,7 @@ export class Renderer {
     /**
      * Draw the intro zoom grid (from original Anim.c BenchmarkSystem)
      * 10x10 grid of white squares that zoom toward the viewer
-     * @param {number} zDistance - Z distance for the grid (982 down to 2)
+     * @param {number} zDistance - Z distance for the grid (5000 down to 500)
      */
     drawIntroGrid(zDistance) {
         // From original: firstRect = (-500, -500) to (-450, -450) = 50x50 unit squares
@@ -400,8 +404,9 @@ export class Renderer {
         const gridSpacing = 100;
         const gridStart = -500;  // Upper-left corner of grid
 
-        // Scale for web tunnel (original coords were smaller)
-        const scale = 2;
+        // Scale 20x for web tunnel - 10x larger world coords at 10x farther Z
+        // keeps same on-screen size while using normal stereo halfOffset
+        const scale = 20;
 
         for (let gx = 0; gx < 10; gx++) {
             for (let gy = 0; gy < 10; gy++) {
@@ -603,12 +608,6 @@ export class Renderer {
         const x = this.width - scaledWidth - rightMargin;
         const y = (this.height - scaledHeight) / 2;
 
-        // Debug: log layout once
-        if (!this._layoutLogged) {
-            console.log('Status panel layout:', { x, y, width: scaledWidth, height: scaledHeight, scale: fixedScale, canvasWidth: this.width, canvasHeight: this.height });
-            this._layoutLogged = true;
-        }
-
         return {
             x,
             y,
@@ -619,9 +618,25 @@ export class Renderer {
     }
 
     /**
+     * Get the apparent Z distance of crosshairs from player, derived from stereo offset.
+     * Formula: separation = 2 * halfOffset * eyeToScreen / z
+     * So: z = 2 * halfOffset * eyeToScreen / separation
+     * Where separation = 2 * crosshairsStereoOffset (total left-right separation)
+     */
+    getCrosshairsZ() {
+        if (!this.stereoEnabled || this.crosshairsStereoOffset === 0) {
+            return 1000;  // Default Z when stereo disabled
+        }
+        const { eyeToScreen } = CONFIG.STEREO;
+        // Total separation is 2 * crosshairsStereoOffset (left eye -offset, right eye +offset)
+        const totalSeparation = 2 * this.crosshairsStereoOffset;
+        return (2 * this.halfOffset * eyeToScreen) / totalSeparation;
+    }
+
+    /**
      * Draw crosshairs in center of screen (matching original RenderTarget)
      * Original: arms from -20 to -6 and 5 to 19, with black outline
-     * Crosshairs appear very close to player (in front of all objects)
+     * Crosshairs are rendered at their logical Z depth so closer objects occlude them
      */
     drawCrosshairs() {
         const scale = this.getScale();
@@ -631,8 +646,8 @@ export class Renderer {
         const armEnd = Math.round(6 * scale);     // Inner edge (gap starts)
         const gapStart = Math.round(5 * scale);   // Other side of gap
 
-        // Stereo offset for crosshairs - fixed pixel offset
-        const stereoOffset = this.stereoEnabled ? 15 : 0;
+        // Stereo offset for crosshairs - uses class property for derived Z calculation
+        const stereoOffset = this.stereoEnabled ? this.crosshairsStereoOffset : 0;
 
         // For stereo mode, use anaglyph colors from config
         // Cyan offset left, red offset right (for red-left/cyan-right glasses, creates pop-out)

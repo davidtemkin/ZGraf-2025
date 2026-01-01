@@ -107,11 +107,17 @@ export class Tunnel {
 
     /**
      * Draw all objects, sorted by Z (far to near - painter's algorithm)
+     * @param {Renderer} renderer - The renderer instance
+     * @param {Object} options - Optional parameters
+     * @param {number} options.crosshairsZ - Z distance for crosshairs (relative to player)
+     * @param {Function} options.drawCrosshairs - Callback to draw crosshairs
      */
-    drawObjects(renderer) {
+    drawObjects(renderer, options = {}) {
         if (!this.player) return;
 
         const playerZ = this.player.z;
+        const { crosshairsZ, drawCrosshairs } = options;
+        let crosshairsDrawn = false;
 
         // Set eye position for projection
         setEyePosition(this.player.x, this.player.y, playerZ);
@@ -130,6 +136,12 @@ export class Tunnel {
 
             // Only draw objects ahead of the player (positive relZ)
             if (relZ > CONFIG.TUNNEL.near && relZ < CONFIG.TUNNEL.far) {
+                // Draw crosshairs when we reach objects closer than crosshairsZ
+                if (drawCrosshairs && !crosshairsDrawn && relZ < crosshairsZ) {
+                    drawCrosshairs();
+                    crosshairsDrawn = true;
+                }
+
                 // Temporarily adjust object Z for correct projection
                 const originalZ = obj.z;
                 obj.z = playerZ + relZ;
@@ -142,11 +154,22 @@ export class Tunnel {
         for (const shot of this.player.shots) {
             const relZ = shot.getZFromPlayer(playerZ);
             if (relZ > CONFIG.TUNNEL.near && relZ < CONFIG.TUNNEL.far) {
+                // Draw crosshairs when we reach shots closer than crosshairsZ
+                if (drawCrosshairs && !crosshairsDrawn && relZ < crosshairsZ) {
+                    drawCrosshairs();
+                    crosshairsDrawn = true;
+                }
+
                 const originalZ = shot.z;
                 shot.z = playerZ + relZ;
                 shot.draw(renderer);
                 shot.z = originalZ;
             }
+        }
+
+        // If crosshairs weren't drawn (no objects closer than them), draw them last
+        if (drawCrosshairs && !crosshairsDrawn) {
+            drawCrosshairs();
         }
     }
 
