@@ -1,0 +1,16 @@
+# Local development server
+server.py
+
+# macOS
+.DS_Store
+
+# Firebase deployment config
+.firebaserc
+firebase.json
+
+# Environment/secrets
+.env
+.env.*
+
+# Node (if ever used)
+node_modules/
