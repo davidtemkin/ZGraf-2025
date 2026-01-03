@@ -27,13 +27,13 @@ This is a faithful port of the original game to modern web browsers using HTML5 
 
 ## Running Locally
 
+Use any static file server from the `manic-episode` directory:
+
 ```bash
 cd manic-episode
-python3 server.py
+python3 -m http.server 8080
 # Open http://localhost:8080 in your browser
 ```
-
-Or use any static file server.
 
 ## Project Structure
 
